@@ -1,0 +1,436 @@
+<!DOCTYPE html>  
+<html lang="ja">  
+<head>  
+  <meta charset="UTF-8">  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>スコア表</title>
+  <script>
+    // 初期処理.
+    window.onload = function(){
+      // イベント紐づけ.
+      document.addEventListener('change', (event) => {
+        // 手入力で点数が変更された場合の処理.
+        if (event.target.matches('.point')) {
+          var tr = event.target.closest('tr');
+          var roundCount = tr.querySelector('.roundCounts').getAttribute('data-value');
+          var points = tr.querySelectorAll('.point');
+          var redPoint = Number(points[0].value) ? Number(points[0].value) : 0;
+          var bluePoint = Number(points[1].value) ? Number(points[1].value) : 0;
+          var dominant = redPoint > bluePoint ? 'red' : redPoint < bluePoint ? 'blue' : 'even';
+          // 背景色の変更.
+          colorChange(roundCount, dominant);
+          // 合計点算出.
+          totalHandling();
+        }
+      });
+      
+      // テーブル生成.
+      makeTable();
+    }
+    
+    // テーブルを生成する関数.
+    function makeTable() {
+      // 最大ラウンド数を取得.
+      var maxRoundSt = document.getElementById("maxRound");
+      var maxRound = parseInt(maxRoundSt.value, 10);
+      if (maxRound < 1) {
+        alert("は？おまえは" + maxRound + "Rのボクシング見たことあんのか？");
+        return false;
+      } else if ( maxRound > 16 && maxRound < 101) {
+        alert("なんか多いけど、大した演算量じゃないしまあいいか");
+      } else if (maxRound > 100) {
+        alert("ふざけんな");
+        return false;
+      } else if (!maxRound) {
+        alert("半角数値を入力してください");
+        return false;
+      }
+      
+      // 現状のテーブル数を取得.
+      var tableCount = document.querySelectorAll("tr.roundTables").length;
+      
+      if (maxRound > tableCount) { // 最大ラウンド数 > テーブル数の場合.
+        // 不足ラウンドを追加.
+        for (var i = tableCount + 1; i <= maxRound; i++) {
+          // テーブルの最終行を取得し、複製.
+          var roundTables = document.querySelectorAll("tr.roundTables");
+          var lastTable = roundTables[roundTables.length - 1];
+          var copyTable = lastTable.cloneNode(true);
+         
+          // 複製テーブルの編集.
+          // trのid.
+          copyTable.id = "round" + i + "Table";
+          // ラウンド数.
+          var roundCount = copyTable.querySelector(".roundCounts");
+          roundCount.dataset.value = i;
+          roundCount.textContent = i + "R";
+          roundCount.className = "roundCounts"; // 背景色のリセット.
+          // 各点数欄.
+          var roundRed = copyTable.querySelector(".roundRed");
+          roundRed.id = "round" + i + "Red";
+          roundRed.value = "";
+          var roundBlue = copyTable.querySelector(".roundBlue");
+          roundBlue.id = "round" + i + "Blue";
+          roundBlue.value = "";
+          // チェックボックス.
+          var ambiguousJudgment = copyTable.querySelector(".ambiguousJudgment");
+          ambiguousJudgment.id = "ambiguousJudgment" + i;
+          ambiguousJudgment.checked = false;
+          var ambiguousJudgmentLabel = copyTable.querySelector(".ambiguousJudgmentLabel");
+          ambiguousJudgmentLabel.setAttribute("for", "ambiguousJudgment" + i);
+          // テーブルの最終行に挿入.
+          lastTable.parentNode.insertBefore(copyTable, lastTable.nextSibling);
+        }
+      } else if (maxRound < tableCount) { // 最大ラウンド数 < テーブル数の場合.
+        // 過剰ラウンドを削除.
+        for (var i = maxRound + 1; i <= tableCount; i++) {
+          document.getElementById("round" + i + "Table").remove();
+        }
+      }  else { // 最大ラウンド数 = テーブル数の場合.
+        // 処理無し.
+      }
+      
+      // 合計を計算.
+      totalHandling();
+    }
+    
+    // 点数を変更する関数.
+    function changePoints(element, dominant) {
+      // ラウンドを取得.
+      var roundCount = getRoundCount(element);
+      
+      // 点数を設定.
+      var bluePoint = document.getElementById("round" + roundCount + "Blue").value;
+      var redPoint = document.getElementById("round" + roundCount + "Red").value;
+      if (bluePoint && redPoint) {
+        switch (dominant) {
+          case "red":
+            document.getElementById("round" + roundCount + "Red").value = 10;
+            document.getElementById("round" + roundCount + "Blue").value = bluePoint - 1;
+            break;
+          case "blue":
+            document.getElementById("round" + roundCount + "Blue").value = 10;
+            document.getElementById("round" + roundCount + "Red").value = redPoint - 1;
+            break;
+          case "even":
+            setPoint(roundCount);
+            break;
+        }
+      } else {
+        setPoint(roundCount);
+        switch (dominant) {
+          case "red":
+            document.getElementById("round" + roundCount + "Blue").value -= 1;
+            break;
+          case "blue":
+            document.getElementById("round" + roundCount + "Red").value -= 1;
+            break;
+        }
+      }
+      // 背景色の変更.
+      colorChange(roundCount, dominant);
+      // 合計を計算.
+      totalHandling();
+    }
+    
+    // 点数初期化処理.
+    function setPoint(roundCount) {
+      document.getElementById("round" + roundCount + "Red").value = 10;
+      document.getElementById("round" + roundCount + "Blue").value = 10;
+    }
+    
+    // 合計点数を制御する関数.
+    function totalHandling() {
+      calTotal("Red");
+      calTotal("Blue");
+    }
+    
+    // 合計点数を計算する関数.
+    function calTotal(target) {
+      var total = 0;
+      var round = document.querySelectorAll(".round" + target);
+      
+      round.forEach(function(input) {
+        var value = parseInt(input.value, 10);
+        // 数字であれば合計に加算.
+        if (!isNaN(value)) {
+          total += value;
+        }
+      });
+
+      // 合計を設定  
+      document.getElementById("sum" + target).value = total;
+    }
+    
+    // 背景色を優勢側に変更する関数.
+    function colorChange(roundCount, dominantClass) {
+      // 当該ラウンドの要素を取得.
+      var dominantCorner = document.querySelector('th[data-value="'+ roundCount + '"]');
+      // 背景色をリセット.
+      dominantCorner.className = "roundCounts";
+      
+      // 優勢側の指定があれば処理を続行.
+      if (dominantClass && dominantClass != "even") {
+        dominantCorner.classList.add(dominantClass + "Corner"); 
+      }
+    }
+    
+    // クリアボタン押下時の関数.
+    function clearButton(element) {
+      // ラウンドを取得.
+      var roundCount = getRoundCount(element);
+      // 当該ラウンドの点数をクリア.
+      clearPoints(roundCount);
+      // 当該ラウンドのチェックボックスをクリア.
+      clearCheckBox(roundCount);
+      // 背景色をクリア.
+      colorChange(roundCount, false);
+      // 合計点数を再計算.
+      totalHandling();
+    }
+    
+    // 押下されたボタンのラウンドを取得する関数.
+    function getRoundCount(element) {
+      // 親の<th>要素を取得.
+      var tr = element.closest('tr');
+      var th = tr.querySelector('th');  
+      
+      // <th>要素からラウンドを取得.
+      var roundCount = th.getAttribute('data-value');
+      
+      return roundCount;
+    }
+    
+    // 入力を消去する関数.
+    function clearInputs() {
+      // スコアの消去.
+      for (var roundCount = 1; roundCount <= document.querySelectorAll("tr.roundTables").length; roundCount++) {
+        clearPoints(roundCount);
+        clearCheckBox(roundCount);
+        colorChange(roundCount, false);
+      }
+      // 合計点数を再計算.
+      totalHandling();
+      
+      // 選手名を消去.
+      document.getElementById("redCorner").value = "";
+      document.getElementById("blueCorner").value = "";
+      
+      // 曖昧スコア初期化.
+      var ambiguous = document.querySelector('#ambiguous');
+      ambiguous.innerHTML = '';
+      var description = document.createTextNode(
+        '※曖昧ラウンドについて、両者いずれかに優勢をつけた場合に成立する全てのスコアを表示します。'
+      );
+      ambiguous.append(description);
+    }
+    
+    // 点数を消去する関数.
+    function clearPoints(roundCount) {
+      document.getElementById("round" + roundCount + "Red").value = "";
+      document.getElementById("round" + roundCount + "Blue").value = "";
+    }
+    
+    // チェックボックスを消去する関数.
+    function clearCheckBox(roundCount) {
+      document.getElementById("ambiguousJudgment" + roundCount).checked = false;
+    }
+    
+    // 判定が曖昧なラウンドの個数を取得する関数.
+    function ambiguousCalButton() {
+      var ambiguous = document.querySelector('#ambiguous');
+      // 前回の結果を削除して、説明文だけ残す.
+      ambiguous.innerHTML = '';
+      var description = document.createTextNode(
+        '※曖昧ラウンドについて、両者いずれかに優勢をつけた場合に成立する全てのスコアを表示します。'
+      );
+      ambiguous.append(description);
+      
+      // 曖昧ラウンド数・非曖昧ラウンドの合計点を計上.
+      var trs = document.querySelectorAll('.roundTables');
+      var checkedCount = 0;
+      var totalObviousPointRed = 0;
+      var totalObviousPointBlue = 0;
+      trs.forEach(function(tr) {
+        if (tr.querySelector('.ambiguousJudgment').checked) {
+          checkedCount++;
+        } else {
+          var points = tr.querySelectorAll('.point');
+          var redPoint = Number(points[0].value) ? Number(points[0].value) : 0;
+          var bluePoint = Number(points[1].value) ? Number(points[1].value) : 0;
+          totalObviousPointRed += redPoint;
+          totalObviousPointBlue += bluePoint;
+        }
+      });
+      // 取り得るスコアの範囲を表示.
+      for (var i = 0; i <= checkedCount; i++) {
+        var possibleRoundRed = checkedCount - i;
+        //console.log("red: " + (totalObviousPointRed + possibleRoundRed * 10 + i * 9) + ", blue: " + (totalObviousPointBlue + possibleRoundRed * 9 + i * 10));
+        var redScore = totalObviousPointRed + possibleRoundRed * 10 + i * 9;
+        var blueScore = totalObviousPointBlue + possibleRoundRed * 9 + i * 10;
+        
+        var result = document.createElement('div');
+        result.textContent = redScore + ' - ' + blueScore;
+        result.className = 'ambiguousScoreResult';
+        result.style.display = 'inline-block';
+        var color = redScore > blueScore ? 'red' : redScore < blueScore ? 'blue' : '';
+        if (color) {
+          result.classList.add(color + "Corner");
+        }
+        // 画面に追加.
+        ambiguous.append(document.createElement('br'));
+        ambiguous.append(result);
+      }
+    }
+    
+//    document.addEventListener('DOMContentLoaded', function() {  
+//                // プルダウンメニューを取得  
+//                const colorSelector = document.getElementById('colorSelector');  
+//
+//                // 選択が変更された時のイベントリスナーを追加  
+//                colorSelector.addEventListener('change', function() {  
+                    // 選択された色を取得  
+//                    const selectedColor = colorSelector.value;  
+
+                    // .backGround クラスの背景色を変更  
+//                    document.querySelector('.redCorner').style.backgroundColor = selectedColor;  
+//                });  
+//            });  
+    
+  </script>  
+  <style>
+    body {  
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+    button {
+      padding: 5px 10px;
+      font-size: 15px;
+    }
+    .dominantButton,.evenButton {
+      padding: 8px 16px;
+      font-size: 15px;
+    }
+    .player {
+      width: 180px;
+      height: 25px;
+      font-size: 20px;
+    }
+    .point {
+      width: 100px;
+      height: 25px;
+      font-size: 22px;
+      text-align: right;
+    }
+    .ques {
+      background: #DDD;
+      width: 1.5em;
+      line-height: 1.5em;  /* 上下中央 */
+      text-align: center;  /* 左右中央 */
+      border-radius: 50%;  /* 円形 */
+    }
+    .cursorPointer {
+      cursor: pointer;
+    }
+    .dispFlex {
+      display: flex;
+    }
+    .ambiguousScoreResult {
+      font-size: 24px;
+      margin-top: 5px;
+    }
+    .redCorner {
+      background: #FBB;
+    }
+    .blueCorner {
+      background: #BBF;
+    }
+
+  </style>
+</head>
+<body>
+  <div style="font-size: 24px;">
+    <input type="text" id="maxRound" value="12" style="width: 40px; font-size: 24px; text-align: right;" onblur="makeTable()">
+    回戦
+  </div>
+  <br />
+  <div class="player-container" style="font-size: 20px;">
+    <input type="text" id="redCorner" class="player redCorner" placeholder="赤コーナー">
+    vs
+    <input type="text" id="blueCorner" class="player blueCorner" placeholder="青コーナー">
+  </div>
+  <!--<div>
+    <select id="colorSelector" style="font-size: 15px;">
+      <option value="#BBF">薄い青</option>
+      <option value="#FFB6C1">ライトピンク</option>
+      <option value="#90EE90">ライトグリーン</option>
+      <option value="#FFD700">ゴールド</option>
+      <option value="#ADD8E6">ライトブルー</option>
+    </select>
+  </div>-->
+  <br />
+  <div style="display: flex; justify-content: center; align-items: center;">
+    <div style="transform: translateX(60px);">
+      <table>
+        <tr id="round1Table" class="roundTables">
+          <th data-value="1" class="roundCounts">
+            1R
+          </th>
+          <td>
+            <button class="dominantButton cursorPointer" onclick="changePoints(this, 'red')">優勢</button>
+          </td>
+          <td>
+            <input type="text" id="round1Red" class="roundRed point">
+          </td>
+          <td>
+            <button class="evenButton cursorPointer" onclick="changePoints(this, 'even')">even</button>
+          </td>
+          <td>
+            <input type="text" id="round1Blue" class="roundBlue point">
+          </td>
+          <td>
+            <button class="dominantButton cursorPointer" onclick="changePoints(this, 'blue')">優勢</button>
+          </td>
+          <td class="dispFlex" style="margin: 7px 0;">
+            &nbsp;
+            <input type="checkbox" id="ambiguousJudgment1" class="ambiguousJudgment cursorPointer">
+            <label for="ambiguousJudgment1" class="ambiguousJudgmentLabel cursorPointer">
+              曖昧
+            </label>
+          </td>
+          <td>
+            &nbsp;&nbsp;&nbsp;&nbsp;
+            <button class="clearButton cursorPointer" onclick="clearButton(this)">クリア</button>
+          </td>
+        </tr>
+        <tr>
+          <th>
+            合計
+          </th>
+          <td></td>
+          <td>
+            <input type="text" id="sumRed" class="sumRed point">
+          </td>
+          <td></td>
+          <td>
+            <input type="text" id="sumBlue" class="sumBlue point">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <br />
+  <div style="font-size: 24px;">
+    <button onclick="clearInputs()">入力クリア</button>
+  </div>
+  <br />
+  <br />
+  <div>
+    <button onclick="ambiguousCalButton()">採点幅を表示</button>
+  </div>
+  <div id="ambiguous">
+    ※曖昧ラウンドについて、両者いずれかに優勢をつけた場合に成立する全てのスコアを表示します。
+  </div>
+</body>  
+</html>
